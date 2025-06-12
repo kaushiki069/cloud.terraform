@@ -464,6 +464,7 @@ from ansible_collections.cloud.terraform.plugins.module_utils.terraform_commands
 from ansible_collections.cloud.terraform.plugins.module_utils.utils import validate_bin_path
 from ansible_collections.cloud.terraform.plugins.plugin_utils.base import TerraformInventoryPluginBase
 from ansible_collections.cloud.terraform.plugins.plugin_utils.common import module_run_command
+import q
 
 
 @dataclass
@@ -564,12 +565,30 @@ def get_preferred_hostname(
     return hostname
 
 
-def write_terraform_config(backend_type: str, path: str) -> None:
-    tf_config = "terraform {\n"
-    tf_config += 'backend "%s" {}' % backend_type
-    tf_config += "\n}"
-    with open(path, "w") as temp_file:
-        temp_file.write(tf_config)
+def write_terraform_config(backend_type: str, path: str, organization: str, workspace: str) -> None:
+    if backend_type=="cloud":
+      tf_content = f'''
+      terraform {{
+        cloud {{
+          organization = "{organization}"
+
+          workspaces {{
+            name = "{workspace}"
+          }}
+        }}
+      }}
+      '''
+      with open(path, "w") as temp_file:
+        temp_file.write(tf_content)
+        
+    else:
+      tf_config = "terraform {\n"
+      tf_config += 'backend "%s" {}' % backend_type
+      tf_config += "\n}"
+      with open(path, "w") as temp_file:
+          temp_file.write(tf_config)
+
+
 
 
 class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ignore  # mypy ignore
@@ -594,12 +613,21 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
         backend_config_files: Optional[List[str]],
         search_child_modules: bool,
         custom_providers: List[TerraformProviderInstance],
+        cloud_backend_config: Optional[Dict[str, str]]
     ) -> List[TerraformStateResource]:
         with TemporaryDirectory() as temp_dir:
-            write_terraform_config(backend_type, os.path.join(temp_dir, "main.tf"))
+            if backend_type=="cloud":
+              q("here in new func")
+              write_terraform_config(backend_type, os.path.join(temp_dir, "main.tf"), cloud_backend_config["organization"], cloud_backend_config["workspace"])
+              q("added maintf")
+            else:
+              write_terraform_config(backend_type, os.path.join(temp_dir, "main.tf"))
             terraform = TerraformCommands(module_run_command, temp_dir, terraform_binary, False)
             try:
-                terraform.init(backend_config=backend_config, backend_config_files=backend_config_files)
+                if cloud_backend_config:
+                  terraform.init(cloud_backend_config=cloud_backend_config, backend_config_files=backend_config_files)
+                else:
+                  terraform.init(backend_config=backend_config, backend_config_files=backend_config_files)
                 state_file = terraform.state_pull()
                 if state_file.version != TERRAFORM_STATE_FILE_SUPPORT_VERSION:
                     self.warn(
@@ -607,6 +635,7 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
                         "The plugin supports version %d while state file has version %d"
                         % (TERRAFORM_STATE_FILE_SUPPORT_VERSION, state_file.version)
                     )
+                q(state_file)
                 return filter_instances(state_file.resources, search_child_modules, custom_providers)
             except TerraformWarning as e:
                 raise TerraformError(e.message)
@@ -658,11 +687,12 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
         provider_mapping = cfg.get("provider_mapping", [])
         terraform_binary = cfg.get("binary_path")
         search_child_modules = cfg.get("search_child_modules", False)
+        cloud_backend_config = cfg.get("cloud_config")
 
         if not backend_type:
             raise TerraformError("The parameter 'backend_type' is required to use this inventory plugin.")
 
-        if not backend_config and not backend_config_files:
+        if not backend_config and not backend_config_files and not cloud_backend_config:
             raise TerraformError(
                 "At least one of 'backend_config' or 'backend_config_files' option is required to configure the Terraform backend."
             )
@@ -687,6 +717,7 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
             backend_config_files,
             search_child_modules,
             conf_providers,
+            cloud_backend_config,
         )
         self.create_inventory(
             instances,

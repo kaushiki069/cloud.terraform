@@ -1,6 +1,7 @@
 import enum
 import json
 from typing import Dict, List, Optional, Tuple, cast
+import q
 
 from ansible.module_utils.compat.version import LooseVersion
 from ansible_collections.cloud.terraform.plugins.module_utils.errors import TerraformError, TerraformWarning
@@ -85,8 +86,15 @@ class TerraformCommands:
         reconfigure: bool = False,
         upgrade: bool = False,
         plugin_paths: Optional[List[str]] = None,
+        cloud_backend_config: Optional[Dict[str, str]] = None,
     ) -> None:
         command = ["init", "-input=false", "-no-color"]
+        if cloud_backend_config:
+            required_keys = ["organization", "workspace"]
+            missing_keys = [k for k in required_keys if k not in cloud_backend_config]
+            if missing_keys:
+                raise ValueError(f"Missing required cloud backend config keys: {missing_keys}")
+            q("Initializing with Terraform Cloud backend (TFC)...")
         if backend_config:
             for key, val in backend_config.items():
                 command.extend(["-backend-config", "{0}={1}".format(key, val)])
