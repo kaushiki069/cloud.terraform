@@ -29,9 +29,9 @@ class TestConvertToHCL:
                 "\n".join(["{", 'organization = "ansible"', "}"]),
             ),
             (
-                {"organization": "ansible", "token": "9zkxXORw8Uw9cQ.atlas"},
+                {"organization": "ansible", "token": "9zkxXORw8Uw9cQ.atlas"}, # notsecret
                 None,
-                "\n".join(["{", 'organization = "ansible"', 'token = "9zkxXORw8Uw9cQ.atlas"', "}"]),
+                "\n".join(["{", 'organization = "ansible"', 'token = "9zkxXORw8Uw9cQ.atlas"', "}"]), # notsecret
             ),
             (
                 {"organization": "ansible"},
@@ -41,7 +41,7 @@ class TestConvertToHCL:
             (
                 {"organization": "ansible", "token": "9zkxXORw8Uw9cQ.atlas"},
                 "cloud",
-                "\n".join(["cloud {", 'organization = "ansible"', 'token = "9zkxXORw8Uw9cQ.atlas"', "}"]),
+                "\n".join(["cloud {", 'organization = "ansible"', 'token = "9zkxXORw8Uw9cQ.atlas"', "}"]), # notsecret
             ),
             (
                 ["redhat", True],
