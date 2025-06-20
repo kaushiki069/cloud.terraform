@@ -618,6 +618,37 @@ def write_terraform_config(backend_type: str, backend_config: Optional[Dict[str,
         temp_file.write(tf_config)
 
 
+def purge_backend_config(backend_config: Dict[str, Any], path: str) -> bool:
+    """The backend_config attribute excepts only string value attributes.
+    However for some backend the configuration may include object attributes
+    e.g:
+      backend "s3" {
+        assume_role = {
+          role_arn = "arn:aws:iam::0123456789:role/Terraform"
+        }
+      }
+      backend "remote" {
+        workspace = {
+          name = "test"
+        }
+      }
+    This method removes the corresponding attributes from the backend_config and generates
+    files with the corresponding content.
+    """
+    m_keys = {}
+    copy_config = deepcopy(backend_config)
+    for k, v in copy_config.items():
+        if isinstance(v, (dict, list)):
+            m_keys[k] = v
+            del backend_config[k]
+
+    if m_keys:
+        result = "\n".join([ansible_dict_to_hcl(v, k) for k, v in m_keys.items()])
+        with open(path, "w") as temp_file:
+            temp_file.write(result)
+    return bool(m_keys)
+
+
 class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ignore  # mypy ignore
     NAME = "cloud.terraform.terraform_state"
 
@@ -648,6 +679,11 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
                 if backend_type.lower() == "cloud":
                     backend_config_files = []
                     backend_config = {}
+                # Remove dict/list elements from backend_config
+                if backend_config:
+                    path = os.path.join(temp_dir, "config.tfbackend")
+                    if purge_backend_config(backend_config, path):
+                        backend_config_files = backend_config_files or [] + [path]
                 terraform.init(backend_config=backend_config, backend_config_files=backend_config_files)
                 state_file = terraform.state_pull()
                 if state_file.version != TERRAFORM_STATE_FILE_SUPPORT_VERSION:
